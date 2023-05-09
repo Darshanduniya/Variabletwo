@@ -1,0 +1,66 @@
+
+from airflow import DAG
+from airflow.models import Variable
+from airflow.operators.http_operator import SimpleHttpOperator
+from datetime import datetime, timedelta
+import json
+
+
+# Define default DAG arguments
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'start_date': datetime(2023, 5, 9),
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+}
+
+
+# Define the DAG object
+dag = DAG(
+    dag_id='rest_api_post_multiple_parameters_example',
+    default_args=default_args,
+    schedule_interval=None,
+    catchup=False
+)
+
+
+# Define the REST API URL and payload as Airflow Variables
+rest_api_url = Variable.get('rest_api_url')
+rest_api_payload = {
+    "param1": Variable.get('param1'),
+    "param2": Variable.get('param2'),
+    "param3": Variable.get('param3')
+}
+
+
+# Define the HTTP POST operator to call the REST API
+rest_api_post = SimpleHttpOperator(
+    task_id='rest_api_post',
+    http_conn_id='rest_api_conn',  # Specify the connection ID to use
+    endpoint=rest_api_url,  # Use the URL defined in the Airflow Variable
+    method='POST',  # Use the HTTP POST method
+    headers={"Content-Type": "application/json"},  # Set the Content-Type header to JSON
+    data=json.dumps(rest_api_payload),  # Serialize the payload to JSON
+    dag=dag
+)
+
+
+# Define a Python function to store the result of the REST API call
+def store_result(ti):
+    response = ti.xcom_pull(task_ids='rest_api_post')  # Get the response from the XCom
+    # Do something with the response, e.g. store it in a database
+    print(response)
+
+
+# Define the PythonOperator to store the result of the REST API call
+store_result = PythonOperator(
+    task_id='store_result',
+    python_callable=store_result,
+    provide_context=True,  # Pass the context to the Python function
+    dag=dag
+)
+
+
+# Define the DAG dependencies
+rest_api_post >> store_result
